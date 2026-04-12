@@ -1,0 +1,11 @@
+{
+  "name": "kimi",
+  "version": "1.0.0",
+  "description": "Delegate swarm-parallel research, multi-perspective review, visual build-and-verify, and full codebase audits to Kimi K2.5 from Claude Code.",
+  "author": {
+    "name": "Thomas Lestum"
+  },
+  "repository": "https://github.com/Myceliq/kimi-plugin-cc",
+  "license": "MIT",
+  "keywords": ["kimi", "swarm", "review", "research", "audit", "visual", "build-ui", "moonvit"]
+}

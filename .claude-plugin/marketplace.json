@@ -1,0 +1,15 @@
+{
+  "name": "kimi-plugin-cc",
+  "description": "Kimi K2.5 swarm-parallel and visual intelligence for Claude Code",
+  "owner": {
+    "name": "Thomas Lestum"
+  },
+  "plugins": [
+    {
+      "name": "kimi",
+      "description": "Delegate swarm-parallel research, multi-perspective review, visual build-and-verify, and full codebase audits to Kimi K2.5.",
+      "version": "1.0.0",
+      "source": "./"
+    }
+  ]
+}
