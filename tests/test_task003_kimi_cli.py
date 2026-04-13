@@ -330,23 +330,26 @@ class TestRunAgentHandler:
             assert code == 1
             assert len(stderr) > 0
 
-    def test_agent_command_rescue_errors_no_agent_yaml(self):
-        """rescue should error when the agent YAML doesn't exist yet."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            stdout, stderr, code = run_companion(
-                "rescue", "fix the bug",
-                env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
-            )
-            assert code == 1
-            # Should mention agent file not found
-            assert "agent" in stderr.lower() or "not found" in stderr.lower() or "not yet" in stderr.lower()
+    def test_agent_command_rescue_resolves_agent_yaml(self):
+        """rescue should resolve the rescuer.yaml agent file successfully."""
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        try:
+            from lib.kimi_cli import resolve_agent_file
+            agent_path = resolve_agent_file("rescue")
+            assert agent_path.is_file()
+            assert agent_path.name == "rescuer.yaml"
+        finally:
+            sys.path.pop(0)
+            for mod_name in list(sys.modules):
+                if mod_name.startswith("lib."):
+                    del sys.modules[mod_name]
 
     def test_agent_command_review_errors_no_agent_yaml(self):
         """review should error when the agent YAML doesn't exist yet."""
         with tempfile.TemporaryDirectory() as tmpdir:
             stdout, stderr, code = run_companion(
                 "review",
-                env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
+                env_override={"CLAUDE_PLUGIN_DATA": tmpdir, "CLAUDE_PLUGIN_ROOT": tmpdir}
             )
             assert code == 1
 
@@ -355,7 +358,7 @@ class TestRunAgentHandler:
         with tempfile.TemporaryDirectory() as tmpdir:
             stdout, stderr, code = run_companion(
                 "research", "how does auth work",
-                env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
+                env_override={"CLAUDE_PLUGIN_DATA": tmpdir, "CLAUDE_PLUGIN_ROOT": tmpdir}
             )
             assert code == 1
 
@@ -364,7 +367,7 @@ class TestRunAgentHandler:
         with tempfile.TemporaryDirectory() as tmpdir:
             stdout, stderr, code = run_companion(
                 "audit",
-                env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
+                env_override={"CLAUDE_PLUGIN_DATA": tmpdir, "CLAUDE_PLUGIN_ROOT": tmpdir}
             )
             assert code == 1
 
@@ -373,7 +376,7 @@ class TestRunAgentHandler:
         with tempfile.TemporaryDirectory() as tmpdir:
             stdout, stderr, code = run_companion(
                 "review-ui", "http://localhost:3000",
-                env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
+                env_override={"CLAUDE_PLUGIN_DATA": tmpdir, "CLAUDE_PLUGIN_ROOT": tmpdir}
             )
             assert code == 1
 

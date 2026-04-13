@@ -84,7 +84,8 @@ class TestCompanionEntryPoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             for cmd in ["research", "review", "review-ui", "build-ui", "rescue", "audit"]:
                 stdout, stderr, code = run_companion(
-                    cmd, "dummy-arg", env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
+                    cmd, "dummy-arg",
+                    env_override={"CLAUDE_PLUGIN_DATA": tmpdir, "CLAUDE_PLUGIN_ROOT": tmpdir}
                 )
                 assert code == 1, f"{cmd} should exit with error"
                 assert len(stderr) > 0, f"{cmd} should produce an error message"

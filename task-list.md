@@ -83,7 +83,7 @@
 - docs_reference: research-brief.md#hooks-format-hooksjson, research-brief.md#environment-variables
 
 ### TASK-005: Rescuer agent, rescue command, and companion handler — first end-to-end agent slice
-- status: pending
+- status: complete
 - depends_on: [TASK-003]
 - checkpoint: true
 - files: [agents/rescuer.yaml, agents/rescuer-system.md, commands/rescue.md, scripts/kimi-companion.py]
