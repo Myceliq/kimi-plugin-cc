@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Kimi companion script — runtime engine for the Kimi Claude Code plugin.
+
+Entry point for all Kimi CLI invocations. Handles job lifecycle, subcommand
+routing, and structured JSON output.
+
+Usage:
+    python3 kimi-companion.py <command> [args]
+
+Exit codes:
+    0  — Success
+    1  — Non-retryable failure
+    75 — Retryable failure (rate limits, server errors, timeouts)
+"""
+
+import json
+import os
+import signal
+import sys
+import time
+
+# Add scripts/ to path so lib/ is importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from lib.state import (
+    resolve_state_dir,
+    read_job,
+    write_job,
+    list_jobs,
+    delete_job,
+)
+
+
+def error_exit(message, code=1):
+    """Print an error message to stderr and exit.
+
+    Args:
+        message: Error message string.
+        code: Exit code (default 1).
+    """
+    sys.stderr.write(f"{message}\n")
+    sys.exit(code)
+
+
+def json_output(data):
+    """Print structured JSON to stdout.
+
+    Args:
+        data: Dict or list to serialize as JSON.
+    """
+    print(json.dumps(data, indent=2))
+
+
+def get_state_dir():
+    """Resolve the state directory from environment.
+
+    Returns:
+        pathlib.Path to the state directory.
+    """
+    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    return resolve_state_dir(plugin_data)
+
+
+def handle_status(args):
+    """Handle the 'status' subcommand.
+
+    Args:
+        args: List of remaining CLI arguments after 'status'.
+    """
+    state_dir = get_state_dir()
+
+    # Parse flags
+    include_all = "--all" in args
+    wait = "--wait" in args
+    timeout_ms = None
+
+    clean_args = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--all":
+            i += 1
+            continue
+        elif args[i] == "--wait":
+            i += 1
+            continue
+        elif args[i] == "--timeout-ms" and i + 1 < len(args):
+            timeout_ms = int(args[i + 1])
+            i += 2
+            continue
+        else:
+            clean_args.append(args[i])
+            i += 1
+
+    # If a job ID was provided, show that specific job
+    if clean_args:
+        job_id = clean_args[0]
+        job = read_job(state_dir, job_id)
+        if job is None:
+            error_exit(f"Job not found: {job_id}")
+
+        if wait and job.get("status") == "running":
+            start = time.time()
+            while job.get("status") == "running":
+                if timeout_ms and (time.time() - start) * 1000 > timeout_ms:
+                    error_exit(f"Timeout waiting for job {job_id}")
+                time.sleep(1)
+                job = read_job(state_dir, job_id)
+                if job is None:
+                    error_exit(f"Job disappeared: {job_id}")
+
+        json_output(job)
+        return
+
+    # No job ID — list jobs
+    jobs = list_jobs(state_dir, include_all=include_all)
+    json_output({"jobs": jobs})
+
+
+def handle_result(args):
+    """Handle the 'result' subcommand.
+
+    Args:
+        args: List of remaining CLI arguments after 'result'.
+    """
+    state_dir = get_state_dir()
+
+    if args:
+        job_id = args[0]
+        job = read_job(state_dir, job_id)
+        if job is None:
+            error_exit(f"Job not found: {job_id}")
+        if job.get("status") not in ("complete", "failed"):
+            error_exit(f"Job {job_id} has status '{job.get('status')}' — not yet complete")
+        output = job.get("output")
+        if output is None:
+            error_exit(f"Job {job_id} has no output stored")
+        json_output(output)
+        return
+
+    # No job ID — find most recently completed job
+    all_jobs = list_jobs(state_dir, include_all=True)
+    completed = [j for j in all_jobs if j.get("status") in ("complete", "failed")]
+    if not completed:
+        error_exit("No completed jobs found")
+
+    # Sort by completed_at descending
+    completed.sort(key=lambda j: j.get("completed_at", ""), reverse=True)
+    output = completed[0].get("output")
+    if output is None:
+        error_exit(f"Job {completed[0]['job_id']} has no output stored")
+    json_output(output)
+
+
+def handle_cancel(args):
+    """Handle the 'cancel' subcommand.
+
+    Args:
+        args: List of remaining CLI arguments after 'cancel'.
+    """
+    state_dir = get_state_dir()
+
+    if args:
+        job_id = args[0]
+    else:
+        # Cancel most recently started running job
+        running = list_jobs(state_dir, include_all=False)
+        running = [j for j in running if j.get("status") == "running"]
+        if not running:
+            error_exit("No running jobs to cancel")
+        job_id = running[0]["job_id"]
+
+    job = read_job(state_dir, job_id)
+    if job is None:
+        error_exit(f"Job not found: {job_id}")
+    if job.get("status") != "running":
+        error_exit(f"Job {job_id} is not running (status: {job.get('status')})")
+
+    # Try to terminate the process: SIGTERM, wait up to 30s, then SIGKILL
+    pid = job.get("pid")
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            # Wait up to 30 seconds for the process to exit
+            for _ in range(30):
+                time.sleep(1)
+                try:
+                    os.kill(pid, 0)  # Check if process is still alive
+                except ProcessLookupError:
+                    break  # Process exited
+            else:
+                # Process still alive after 30s — send SIGKILL
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        except ProcessLookupError:
+            pass  # Process already dead
+        except PermissionError:
+            sys.stderr.write(f"Warning: no permission to signal PID {pid}\n")
+
+    # Update job status
+    job["status"] = "cancelled"
+    job["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    write_job(state_dir, job_id, job)
+
+    json_output({"status": "cancelled", "job_id": job_id})
+
+
+def handle_agent_stub(command, args):
+    """Stub handler for agent subcommands not yet implemented.
+
+    Args:
+        command: The subcommand name.
+        args: List of remaining CLI arguments.
+    """
+    error_exit(f"Command '{command}' is not yet implemented")
+
+
+def main():
+    """Main entry point — parse subcommand and dispatch."""
+    if len(sys.argv) < 2:
+        error_exit("Usage: kimi-companion.py <command> [args]\n"
+                   "Commands: status, result, cancel, research, review, "
+                   "review-ui, build-ui, rescue, audit")
+
+    command = sys.argv[1]
+    args = sys.argv[2:]
+
+    dispatch = {
+        "status": handle_status,
+        "result": handle_result,
+        "cancel": handle_cancel,
+    }
+
+    agent_commands = {"research", "review", "review-ui", "build-ui", "rescue", "audit"}
+
+    if command in dispatch:
+        dispatch[command](args)
+    elif command in agent_commands:
+        handle_agent_stub(command, args)
+    else:
+        error_exit(f"Unknown command: {command}")
+
+
+if __name__ == "__main__":
+    main()

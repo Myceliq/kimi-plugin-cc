@@ -13,7 +13,7 @@
 ---
 
 ### TASK-001: Plugin metadata, internal skills, and project scaffolding
-- status: in_progress
+- status: complete
 - depends_on: []
 - checkpoint: false
 - files: [.claude-plugin/plugin.json, .claude-plugin/marketplace.json, skills/kimi-cli-runtime/SKILL.md, skills/kimi-result-handling/SKILL.md, .gitignore]
@@ -26,27 +26,35 @@
   - All directory structure matches the target layout from the spec (adjusted for commands/ vs skills/ convention)
 - docs_reference: research-brief.md#plugin-metadata-format-pluginjson, research-brief.md#marketplace-metadata-format-marketplacejson, research-brief.md#skill-definition-format-skillmd
 
-### TASK-002: Companion script core — entry point, state management, and job management commands
-- status: pending
+### TASK-002: Companion script entry point and state management library
+- status: complete
 - depends_on: [TASK-001]
-- checkpoint: true
-- files: [scripts/kimi-companion.py, scripts/lib/__init__.py, scripts/lib/state.py, commands/status.md, commands/result.md, commands/cancel.md]
+- checkpoint: false
+- files: [scripts/kimi-companion.py, scripts/lib/__init__.py, scripts/lib/state.py]
 - acceptance:
   - `scripts/kimi-companion.py` is a valid Python 3 script with a subcommand dispatcher that routes to `status`, `result`, `cancel` (and stubs for agent subcommands that error with "not yet implemented")
   - `scripts/lib/state.py` implements: job state directory resolution (using `CLAUDE_PLUGIN_DATA` env var with a fallback), job ID generation (prefix + timestamp + random), read/write/list/delete operations on per-job JSON files, job state schema matching spec (job_id, agent, status, started_at, pid, args, completed_at, output)
   - `status` subcommand: no args lists active/recent jobs; with job-id shows details; `--wait` blocks until job completes; `--timeout-ms` limits wait time; `--all` includes completed/cancelled jobs. Output is valid JSON to stdout.
   - `result` subcommand: no args returns most recently completed job's output; with job-id returns that job's output. Output is the stored job output JSON to stdout.
   - `cancel` subcommand: no args cancels most recently started job; with job-id cancels that job. Sends SIGTERM, waits up to 30s, then SIGKILL. Updates job status to `cancelled`. Returns confirmation JSON to stdout.
+  - All companion script errors write to stderr and exit with code 1
+  - No external Python dependencies required — stdlib only
+- docs_reference: research-brief.md#codex-state-management-more-sophisticated, research-brief.md#codex-job-tracking-pattern, research-brief.md#environment-variables
+
+### TASK-002B: Job management command definitions
+- status: complete
+- depends_on: [TASK-002]
+- checkpoint: false
+- files: [commands/status.md, commands/result.md, commands/cancel.md]
+- acceptance:
   - `commands/status.md` has frontmatter with `disable-model-invocation: true`, `allowed-tools: Bash(python3:*)`, correct `argument-hint`, and passthrough invocation of the companion
   - `commands/result.md` has same passthrough pattern as status
   - `commands/cancel.md` has same passthrough pattern as status
-  - All companion script errors write to stderr and exit with code 1
-  - No external Python dependencies required — stdlib only
-- docs_reference: research-brief.md#codex-state-management-more-sophisticated, research-brief.md#codex-job-tracking-pattern, research-brief.md#command-definition-format-commandsmd, research-brief.md#environment-variables
+- docs_reference: research-brief.md#command-definition-format-commandsmd
 
 ### TASK-003: Companion script — Kimi CLI invocation, JSONL parsing, and background job support
 - status: pending
-- depends_on: [TASK-002]
+- depends_on: [TASK-002B]
 - checkpoint: false
 - files: [scripts/lib/kimi_cli.py, scripts/kimi-companion.py, scripts/lib/state.py]
 - acceptance:
@@ -62,7 +70,7 @@
 
 ### TASK-004: Session lifecycle hooks
 - status: pending
-- depends_on: [TASK-002]
+- depends_on: [TASK-002B]
 - checkpoint: false
 - files: [hooks/hooks.json, scripts/kimi-companion.py, scripts/lib/state.py]
 - acceptance:
