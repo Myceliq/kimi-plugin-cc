@@ -214,6 +214,75 @@ def handle_cancel(args):
     json_output({"status": "cancelled", "job_id": job_id})
 
 
+def handle_session_start(args):
+    """Handle the 'session-start' subcommand (invoked by SessionStart hook).
+
+    Reads session context from stdin JSON and sets KIMI_COMPANION_SESSION_ID
+    via the CLAUDE_ENV_FILE append pattern.
+
+    Args:
+        args: List of remaining CLI arguments (unused).
+    """
+    # Read session context from stdin
+    stdin_text = sys.stdin.read().strip()
+    if not stdin_text:
+        return  # No input — nothing to do
+
+    try:
+        context = json.loads(stdin_text)
+    except json.JSONDecodeError:
+        return  # Malformed input — exit cleanly
+
+    session_id = context.get("session_id", "")
+
+    # Set KIMI_COMPANION_SESSION_ID via CLAUDE_ENV_FILE
+    env_file = os.environ.get("CLAUDE_ENV_FILE")
+    if env_file and session_id:
+        with open(env_file, "a") as f:
+            f.write(f"export KIMI_COMPANION_SESSION_ID={session_id}\n")
+
+
+def handle_session_end(args):
+    """Handle the 'session-end' subcommand (invoked by SessionEnd hook).
+
+    Reads session context from stdin JSON, terminates running jobs for the
+    session, and cleans up stale job files.
+
+    Args:
+        args: List of remaining CLI arguments (unused).
+    """
+    # Read session context from stdin
+    stdin_text = sys.stdin.read().strip()
+    session_id = None
+    if stdin_text:
+        try:
+            context = json.loads(stdin_text)
+            session_id = context.get("session_id")
+        except json.JSONDecodeError:
+            pass
+
+    # Also check env var
+    if not session_id:
+        session_id = os.environ.get("KIMI_COMPANION_SESSION_ID")
+
+    state_dir = get_state_dir()
+
+    # Find running jobs for this session and cancel them
+    running = list_jobs(state_dir, include_all=False, session_id=session_id)
+    for job in running:
+        if job.get("status") != "running":
+            continue
+        pid = job.get("pid")
+        if pid:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+        job["status"] = "cancelled"
+        job["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        write_job(state_dir, job["job_id"], job)
+
+
 def handle_agent(command, args):
     """Generic handler for agent subcommands.
 
@@ -312,6 +381,8 @@ def main():
         "status": handle_status,
         "result": handle_result,
         "cancel": handle_cancel,
+        "session-start": handle_session_start,
+        "session-end": handle_session_end,
     }
 
     agent_commands = {"research", "review", "review-ui", "build-ui", "rescue", "audit"}

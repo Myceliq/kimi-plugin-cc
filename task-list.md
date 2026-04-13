@@ -69,7 +69,7 @@
 - docs_reference: research-brief.md#kimi-cli-print-mode, research-brief.md#codex-background-task-pattern, research-brief.md#no---work-dir-flag-in-current-kimi-cli
 
 ### TASK-004: Session lifecycle hooks
-- status: pending
+- status: complete
 - depends_on: [TASK-002B]
 - checkpoint: false
 - files: [hooks/hooks.json, scripts/kimi-companion.py, scripts/lib/state.py]

@@ -96,13 +96,14 @@ def read_job(state_dir, job_id):
         return json.load(f)
 
 
-def list_jobs(state_dir, include_all=False):
+def list_jobs(state_dir, include_all=False, session_id=None):
     """List all job records in the state directory.
 
     Args:
         state_dir: pathlib.Path to the state directory.
         include_all: If True, include completed and cancelled jobs.
             If False, include only active (running) jobs.
+        session_id: If provided, only return jobs matching this session ID.
 
     Returns:
         List of job record dicts, sorted by started_at descending.
@@ -119,6 +120,8 @@ def list_jobs(state_dir, include_all=False):
             except json.JSONDecodeError:
                 continue
         if not include_all and job.get("status") in ("complete", "cancelled", "failed"):
+            continue
+        if session_id is not None and job.get("session_id") != session_id:
             continue
         jobs.append(job)
 
