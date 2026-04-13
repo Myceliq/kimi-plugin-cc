@@ -53,7 +53,7 @@
 - docs_reference: research-brief.md#command-definition-format-commandsmd
 
 ### TASK-003: Companion script — Kimi CLI invocation, JSONL parsing, and background job support
-- status: pending
+- status: complete
 - depends_on: [TASK-002B]
 - checkpoint: false
 - files: [scripts/lib/kimi_cli.py, scripts/kimi-companion.py, scripts/lib/state.py]

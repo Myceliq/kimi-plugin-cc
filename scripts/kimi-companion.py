@@ -24,10 +24,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.state import (
     resolve_state_dir,
+    generate_job_id,
     read_job,
     write_job,
     list_jobs,
     delete_job,
+)
+from lib.kimi_cli import (
+    AGENT_CONFIGS,
+    build_kimi_command,
+    resolve_agent_file,
+    run_foreground,
+    run_background,
 )
 
 
@@ -206,14 +214,88 @@ def handle_cancel(args):
     json_output({"status": "cancelled", "job_id": job_id})
 
 
-def handle_agent_stub(command, args):
-    """Stub handler for agent subcommands not yet implemented.
+def handle_agent(command, args):
+    """Generic handler for agent subcommands.
+
+    Resolves the agent YAML, constructs the prompt, selects foreground/background
+    mode, invokes Kimi CLI, and stores the result via the state module.
 
     Args:
-        command: The subcommand name.
+        command: The subcommand name (e.g., 'rescue', 'review').
         args: List of remaining CLI arguments.
     """
-    error_exit(f"Command '{command}' is not yet implemented")
+    config = AGENT_CONFIGS.get(command)
+    if config is None:
+        error_exit(f"Unknown agent command: {command}")
+
+    # Parse mode flags
+    mode = config["default_mode"]
+    clean_args = []
+    for arg in args:
+        if arg == "--wait":
+            mode = "wait"
+        elif arg == "--background":
+            mode = "background"
+        else:
+            clean_args.append(arg)
+
+    # Commands that require arguments
+    requires_args = {"rescue", "build-ui", "research", "review-ui"}
+    if command in requires_args and not clean_args:
+        error_exit(f"Usage: kimi-companion.py {command} <arguments>")
+
+    # Resolve agent YAML
+    try:
+        agent_file = resolve_agent_file(command)
+    except FileNotFoundError as e:
+        error_exit(str(e))
+
+    # Build prompt from remaining args
+    prompt = " ".join(clean_args) if clean_args else command
+
+    # Build Kimi CLI command
+    cmd = build_kimi_command(agent_file=str(agent_file), prompt=prompt)
+
+    # Determine working directory
+    cwd = os.getcwd()
+
+    # Create job record
+    state_dir = get_state_dir()
+    job_id = generate_job_id(command)
+    job = {
+        "job_id": job_id,
+        "agent": config["agent_yaml"].replace(".yaml", ""),
+        "status": "running",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "pid": None,
+        "args": [command] + clean_args,
+    }
+
+    if mode == "background":
+        bg_result = run_background(cmd=cmd, cwd=cwd)
+        job["pid"] = bg_result["pid"]
+        write_job(state_dir, job_id, job)
+        json_output({"job_id": job_id, "status": "running", "pid": bg_result["pid"]})
+    else:
+        job["pid"] = os.getpid()
+        write_job(state_dir, job_id, job)
+        result = run_foreground(cmd=cmd, cwd=cwd)
+        if result["exit_code"] == 0:
+            job["status"] = "complete"
+            job["output"] = result["output"]
+        elif result["exit_code"] == 75:
+            job["status"] = "failed"
+            job["output"] = result.get("stderr", "Retryable failure")
+            sys.stderr.write(f"Retryable failure (exit 75): {result.get('stderr', '')}\n")
+        else:
+            job["status"] = "failed"
+            job["output"] = result.get("stderr", "Non-retryable failure")
+            sys.stderr.write(f"Kimi CLI failed (exit {result['exit_code']}): {result.get('stderr', '')}\n")
+        job["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        write_job(state_dir, job_id, job)
+        if job["status"] == "failed":
+            error_exit(f"Agent {command} failed")
+        json_output({"job_id": job_id, "status": job["status"], "output": job["output"]})
 
 
 def main():
@@ -237,7 +319,7 @@ def main():
     if command in dispatch:
         dispatch[command](args)
     elif command in agent_commands:
-        handle_agent_stub(command, args)
+        handle_agent(command, args)
     else:
         error_exit(f"Unknown command: {command}")
 

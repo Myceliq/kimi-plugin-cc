@@ -79,16 +79,15 @@ class TestCompanionEntryPoint:
             )
             assert code == 1
 
-    def test_agent_stubs_not_yet_implemented(self):
-        """Agent subcommands should error with 'not yet implemented'."""
+    def test_agent_commands_error_without_yaml(self):
+        """Agent subcommands should error when agent YAML files don't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             for cmd in ["research", "review", "review-ui", "build-ui", "rescue", "audit"]:
                 stdout, stderr, code = run_companion(
                     cmd, "dummy-arg", env_override={"CLAUDE_PLUGIN_DATA": tmpdir}
                 )
                 assert code == 1, f"{cmd} should exit with error"
-                assert "not yet implemented" in stderr.lower() or "not implemented" in stderr.lower(), \
-                    f"{cmd} should say not yet implemented, got: {stderr}"
+                assert len(stderr) > 0, f"{cmd} should produce an error message"
 
 
 class TestStateModule:
