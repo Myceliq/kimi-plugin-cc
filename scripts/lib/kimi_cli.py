@@ -44,6 +44,10 @@ AGENT_CONFIGS = {
         "agent_yaml": "bulk-fixer.yaml",
         "default_mode": "wait",
     },
+    "sprint": {
+        "agent_yaml": "sprint-coordinator.yaml",
+        "default_mode": "wait",
+    },
 }
 
 

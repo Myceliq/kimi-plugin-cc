@@ -538,7 +538,7 @@ def main():
     if len(sys.argv) < 2:
         error_exit("Usage: kimi-companion.py <command> [args]\n"
                    "Commands: status, result, cancel, research, review, "
-                   "review-ui, refine-ui, build-ui, rescue, audit, fix")
+                   "review-ui, refine-ui, build-ui, rescue, audit, fix, sprint")
 
     command = sys.argv[1]
     args = sys.argv[2:]
@@ -552,7 +552,7 @@ def main():
         "review": handle_review,
     }
 
-    agent_commands = {"research", "review-ui", "refine-ui", "build-ui", "rescue", "audit", "fix"}
+    agent_commands = {"research", "review-ui", "refine-ui", "build-ui", "rescue", "audit", "fix", "sprint"}
 
     if command in dispatch:
         dispatch[command](args)
