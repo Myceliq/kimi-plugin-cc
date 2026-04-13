@@ -283,6 +283,170 @@ def handle_session_end(args):
         write_job(state_dir, job["job_id"], job)
 
 
+def collect_git_diff(scope="working-tree", base=None):
+    """Collect git diff based on scope and base parameters.
+
+    Args:
+        scope: One of 'auto', 'working-tree', 'branch'
+        base: Base ref for branch comparison (e.g., 'main', 'origin/main')
+
+    Returns:
+        String containing the git diff output.
+    """
+    import subprocess
+
+    if scope == "working-tree":
+        cmd = ["git", "diff", "HEAD"]
+    elif scope == "branch":
+        if base:
+            cmd = ["git", "diff", f"{base}...HEAD"]
+        else:
+            # Try to detect default base branch
+            for default_base in ["main", "master", "origin/main", "origin/master"]:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--verify", default_base],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    cmd = ["git", "diff", f"{default_base}...HEAD"]
+                    break
+            else:
+                # Fallback to comparing with HEAD~1
+                cmd = ["git", "diff", "HEAD~1..HEAD"]
+    elif scope == "auto":
+        # Auto-detect: if there are uncommitted changes, use working-tree
+        # otherwise use branch comparison
+        result = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD"],
+            capture_output=True
+        )
+        if result.returncode != 0:
+            cmd = ["git", "diff", "HEAD"]
+        else:
+            # No uncommitted changes, compare with default base
+            for default_base in ["main", "master", "origin/main", "origin/master"]:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--verify", default_base],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    cmd = ["git", "diff", f"{default_base}...HEAD"]
+                    break
+            else:
+                cmd = ["git", "diff", "HEAD~1..HEAD"]
+    else:
+        cmd = ["git", "diff", "HEAD"]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+    return result.stdout if result.returncode == 0 else ""
+
+
+def handle_review(args):
+    """Handle the 'review' subcommand with git diff collection.
+
+    Args:
+        args: List of remaining CLI arguments after 'review'.
+    """
+    config = AGENT_CONFIGS.get("review")
+    if config is None:
+        error_exit("Review agent configuration not found")
+
+    # Parse arguments
+    mode = config["default_mode"]  # background by default
+    scope = "auto"
+    base = None
+    focus = None
+    clean_args = []
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--wait":
+            mode = "wait"
+            i += 1
+        elif arg == "--background":
+            mode = "background"
+            i += 1
+        elif arg == "--scope" and i + 1 < len(args):
+            scope = args[i + 1]
+            i += 2
+        elif arg == "--base" and i + 1 < len(args):
+            base = args[i + 1]
+            i += 2
+        elif arg == "--focus" and i + 1 < len(args):
+            focus = args[i + 1]
+            i += 2
+        elif not arg.startswith("--"):
+            clean_args.append(arg)
+            i += 1
+        else:
+            i += 1
+
+    # Resolve agent YAML
+    try:
+        agent_file = resolve_agent_file("review")
+    except FileNotFoundError as e:
+        error_exit(str(e))
+
+    # Collect git diff
+    diff = collect_git_diff(scope=scope, base=base)
+    if not diff.strip():
+        error_exit("No changes found to review. Make sure you have uncommitted changes or are on a branch with commits.")
+
+    # Build the prompt with diff and any additional context
+    prompt_parts = ["Review the following code changes:\n\n```diff\n", diff, "\n```"]
+    if focus:
+        prompt_parts.append(f"\n\nFocus areas: {focus}")
+    if clean_args:
+        prompt_parts.append(f"\n\nAdditional context: {' '.join(clean_args)}")
+    prompt = "".join(prompt_parts)
+
+    # Build Kimi CLI command
+    cmd = build_kimi_command(agent_file=str(agent_file), prompt=prompt)
+
+    # Create job record
+    state_dir = get_state_dir()
+    job_id = generate_job_id("review")
+    session_id = os.environ.get("KIMI_COMPANION_SESSION_ID")
+    job = {
+        "job_id": job_id,
+        "agent": config["agent_yaml"].replace(".yaml", ""),
+        "status": "running",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "pid": None,
+        "args": ["review"] + args,
+        "session_id": session_id,
+    }
+
+    cwd = os.getcwd()
+
+    if mode == "background":
+        bg_result = run_background(cmd=cmd, cwd=cwd)
+        job["pid"] = bg_result["pid"]
+        write_job(state_dir, job_id, job)
+        json_output({"job_id": job_id, "status": "running", "pid": bg_result["pid"]})
+    else:
+        job["pid"] = os.getpid()
+        write_job(state_dir, job_id, job)
+        result = run_foreground(cmd=cmd, cwd=cwd)
+        if result["exit_code"] == 0:
+            job["status"] = "complete"
+            job["output"] = result["output"]
+        elif result["exit_code"] == 75:
+            job["status"] = "failed"
+            job["output"] = result.get("stderr", "Retryable failure")
+            sys.stderr.write(f"Retryable failure (exit 75): {result.get('stderr', '')}\n")
+        else:
+            job["status"] = "failed"
+            job["output"] = result.get("stderr", "Non-retryable failure")
+            sys.stderr.write(f"Kimi CLI failed (exit {result['exit_code']}): {result.get('stderr', '')}\n")
+        job["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        write_job(state_dir, job_id, job)
+        if job["status"] == "failed":
+            error_exit("Agent review failed")
+        json_output({"job_id": job_id, "status": job["status"], "output": job["output"]})
+
+
 def handle_agent(command, args):
     """Generic handler for agent subcommands.
 
@@ -331,6 +495,7 @@ def handle_agent(command, args):
     # Create job record
     state_dir = get_state_dir()
     job_id = generate_job_id(command)
+    session_id = os.environ.get("KIMI_COMPANION_SESSION_ID")
     job = {
         "job_id": job_id,
         "agent": config["agent_yaml"].replace(".yaml", ""),
@@ -338,6 +503,7 @@ def handle_agent(command, args):
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "pid": None,
         "args": [command] + clean_args,
+        "session_id": session_id,
     }
 
     if mode == "background":
@@ -383,9 +549,10 @@ def main():
         "cancel": handle_cancel,
         "session-start": handle_session_start,
         "session-end": handle_session_end,
+        "review": handle_review,
     }
 
-    agent_commands = {"research", "review", "review-ui", "build-ui", "rescue", "audit"}
+    agent_commands = {"research", "review-ui", "build-ui", "rescue", "audit"}
 
     if command in dispatch:
         dispatch[command](args)

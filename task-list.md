@@ -150,7 +150,7 @@
 - docs_reference: research-brief.md#verified-format-from-installed-kimi-cli-source, research-brief.md#agent-tool-parameters, research-brief.md#built-in-subagent-types
 
 ### TASK-010: Audit coordinator agent and audit command
-- status: pending
+- status: complete
 - depends_on: [TASK-003]
 - checkpoint: true
 - files: [agents/audit-coordinator.yaml, agents/audit-coordinator-system.md, commands/audit.md, scripts/kimi-companion.py]

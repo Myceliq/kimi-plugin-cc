@@ -1,10 +1,11 @@
 {
-  "description": "Kimi companion lifecycle hooks",
+  "description": "Session lifecycle hooks for the Kimi companion script.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/kimi-companion.py\" session-start",
             "timeout": 5
           }
@@ -15,6 +16,7 @@
       {
         "hooks": [
           {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/kimi-companion.py\" session-end",
             "timeout": 5
           }

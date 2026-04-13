@@ -15,13 +15,28 @@ kimi-plugin-cc/
     kimi-cli-runtime/SKILL.md    # Internal: companion script contract
     kimi-result-handling/SKILL.md # Internal: output presentation rules
   agents/
-    rescuer.yaml             # Kimi CLI agent YAML: single-agent task delegation
-    rescuer-system.md        # System prompt: diagnose/fix/research
+    rescuer.yaml             # Single-agent: diagnose/fix/research
+    rescuer-system.md        # System prompt for rescuer
+    visual-builder.yaml      # Single-agent: visual round-trip build
+    visual-builder-system.md # System prompt for visual builder
+    swarm-reviewer.yaml      # Root agent + 4 explore subagents: code review
+    swarm-reviewer-system.md # System prompt for swarm reviewer
+    swarm-researcher.yaml    # Root agent + 3-10 explore subagents: research
+    swarm-researcher-system.md # System prompt for swarm researcher
+    review-ui.yaml           # Root agent + 4 explore subagents: UI review
+    review-ui-system.md      # System prompt for review-ui
+    audit-coordinator.yaml   # Root agent + up to 100 explore subagents: codebase audit
+    audit-coordinator-system.md # System prompt for audit coordinator
   commands/
     status.md                # /kimi:status -- passthrough to companion
     result.md                # /kimi:result -- passthrough to companion
     cancel.md                # /kimi:cancel -- passthrough to companion
     rescue.md                # /kimi:rescue -- delegates to rescuer agent
+    build-ui.md              # /kimi:build-ui -- delegates to visual builder
+    swarm-review.md          # /kimi:swarm-review -- delegates to swarm reviewer
+    swarm-research.md        # /kimi:swarm-research -- delegates to swarm researcher
+    review-ui.md             # /kimi:review-ui -- delegates to review-ui agent
+    audit.md                 # /kimi:audit -- delegates to audit coordinator
   scripts/
     kimi-companion.py        # Main entry point -- subcommand dispatcher
     lib/
@@ -36,6 +51,11 @@ kimi-plugin-cc/
     test_task003_kimi_cli.py     # Kimi CLI module, JSONL parsing, agent configs
     test_task004_hooks.py        # Session lifecycle hooks
     test_task005_rescuer.py      # Rescuer agent, command, and integration
+    test_task006_visual_builder.py # Visual builder agent and command
+    test_task007_swarm_reviewer.py # Swarm reviewer agent and command
+    test_task008_swarm_researcher.py # Swarm researcher agent and command
+    test_task009_review_ui.py    # Review-UI agent and command
+    test_task010_audit.py        # Audit coordinator agent and command
 ```
 
 ## Companion Script (`scripts/kimi-companion.py`)
@@ -45,10 +65,14 @@ Entry point for all Kimi plugin operations. Routes subcommands:
 - **`status [job-id] [--wait] [--timeout-ms] [--all]`** -- List or query jobs. Returns JSON to stdout.
 - **`result [job-id]`** -- Fetch output of completed job. Returns stored output JSON.
 - **`cancel [job-id]`** -- Terminate running job (SIGTERM, waits up to 30s, then SIGKILL). Updates state to cancelled.
-- **`rescue <task>`** -- Delegate task to rescuer agent via Kimi CLI.
+- **`rescue <task>`** -- Delegate task to rescuer agent (foreground default).
+- **`build-ui <image> <prompt>`** -- Delegate to visual builder agent (foreground default).
+- **`review [--scope] [--base] [--focus]`** -- Delegate to swarm reviewer agent (background default).
+- **`research <question>`** -- Delegate to swarm researcher agent (background default).
+- **`review-ui <url-or-image>`** -- Delegate to review-ui agent (background default).
+- **`audit [--focus <categories>]`** -- Delegate to audit coordinator agent (background default).
 - **`session-start`** -- Hook handler: sets KIMI_COMPANION_SESSION_ID via CLAUDE_ENV_FILE.
 - **`session-end`** -- Hook handler: terminates running jobs for the session.
-- **Agent stubs** (`research`, `review`, `review-ui`, `build-ui`, `audit`) -- Wired to generic handler; error until agent YAMLs are created.
 
 Error convention: stderr for errors, stdout for structured JSON, exit code 1 for failures.
 
@@ -80,10 +104,35 @@ Error convention: stderr for errors, stdout for structured JSON, exit code 1 for
 
 Single-agent task delegation. No subagents, no Agent tool. Tools: ReadFile, WriteFile, StrReplaceFile, Shell, Glob, Grep, SearchWeb, FetchURL. Output: `{status, summary, files_changed, remaining_issues}`.
 
+### Visual Builder (`agents/visual-builder.yaml`)
+
+Single-agent visual round-trip. No subagents. Tools: ReadFile, WriteFile, StrReplaceFile, Shell, Glob, Grep. 6-step flow: Analyze, Build, Screenshot, Compare, Iterate (up to 5 rounds), Return. Output: `{status, summary, files_changed, remaining_issues, screenshots}`.
+
+### Swarm Reviewer (`agents/swarm-reviewer.yaml`)
+
+Root agent + 4 parallel `explore`-type subagents (Security, Performance, Correctness, Maintainability). Tools: Agent, ReadFile, Glob, Grep. Output: `{verdict, summary, findings[], next_steps}`. Verdict: `approve` or `needs-attention`.
+
+### Swarm Researcher (`agents/swarm-researcher.yaml`)
+
+Root agent + 3-10 parallel `explore`-type subagents per research question. Tools: Agent, ReadFile, Shell, Glob, Grep, SearchWeb, FetchURL. Decomposes questions into independent work packages. Output: `{verdict, summary, findings[] with file:line citations, next_steps}`.
+
+### Review-UI (`agents/review-ui.yaml`)
+
+Root agent + 4 parallel `explore`-type subagents (Visual polish, Accessibility, Responsiveness, UX heuristics). Tools: Agent, ReadFile, Shell, Glob. Screenshots at 375px/768px/1440px viewports. Localhost URLs only. Output: `{verdict, summary, findings[], screenshots, next_steps}`.
+
+### Audit Coordinator (`agents/audit-coordinator.yaml`)
+
+Root agent + up to 100 parallel `explore`-type subagents. Tools: Agent, ReadFile, Glob, Grep. 4-phase flow: Catalog (glob source files, exclude node_modules/.git), Partition (scaling table: ~5-200 files/agent depending on codebase size, max 100 agents), Dispatch (explore subagents evaluate 7 focus areas), Synthesize (deduplicate, rank, group by category). 7 focus areas: security, dead code, naming inconsistencies, error handling, test coverage, dependencies, documentation. Output: `{summary, stats, findings[], by_category, next_steps}`.
+
 ## Commands (User-Facing)
 
 - **status/result/cancel** -- `disable-model-invocation: true`, direct passthrough via `Bash(python3:*)`.
-- **rescue** -- `context: fork`, routes to rescuer agent.
+- **rescue** -- `context: fork`, routes to rescuer agent (foreground).
+- **build-ui** -- `context: fork`, routes to visual builder (foreground).
+- **swarm-review** -- `context: fork`, routes to swarm reviewer (background).
+- **swarm-research** -- `context: fork`, routes to swarm researcher (background).
+- **review-ui** -- `context: fork`, routes to review-ui agent (background).
+- **audit** -- `context: fork`, routes to audit coordinator (background).
 
 ## Key Decisions
 
