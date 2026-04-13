@@ -124,7 +124,7 @@
 - docs_reference: research-brief.md#verified-format-from-installed-kimi-cli-source, research-brief.md#agent-tool-parameters, research-brief.md#built-in-subagent-types, research-brief.md#kimi_clitools.multiagentcreatesubagent-does-not-exist, research-brief.md#codex-review-output-schema-json-schema
 
 ### TASK-008: Swarm researcher agent and swarm-research command
-- status: pending
+- status: complete
 - depends_on: [TASK-003]
 - checkpoint: false
 - files: [agents/swarm-researcher.yaml, agents/swarm-researcher-system.md, commands/swarm-research.md, scripts/kimi-companion.py]

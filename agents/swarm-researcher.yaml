@@ -1,0 +1,12 @@
+version: 1
+agent:
+  name: swarm-researcher
+  system_prompt_path: ./swarm-researcher-system.md
+  tools:
+    - "kimi_cli.tools.agent:Agent"
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.shell:Shell"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.web:SearchWeb"
+    - "kimi_cli.tools.web:FetchURL"
