@@ -1,0 +1,11 @@
+version: 1
+agent:
+  name: refine-ui
+  system_prompt_path: ./refine-ui-system.md
+  tools:
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.file:StrReplaceFile"
+    - "kimi_cli.tools.shell:Shell"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"

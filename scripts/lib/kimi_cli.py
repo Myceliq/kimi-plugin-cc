@@ -36,6 +36,10 @@ AGENT_CONFIGS = {
         "agent_yaml": "audit-coordinator.yaml",
         "default_mode": "background",
     },
+    "refine-ui": {
+        "agent_yaml": "refine-ui.yaml",
+        "default_mode": "wait",
+    },
 }
 
 
