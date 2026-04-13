@@ -110,7 +110,7 @@
 - docs_reference: research-brief.md#verified-format-from-installed-kimi-cli-source, research-brief.md#available-tool-module-paths-verified-from-kimi-cli-v1310-source, research-brief.md#command-definition-format-commandsmd
 
 ### TASK-007: Swarm reviewer agent and swarm-review command
-- status: pending
+- status: complete
 - depends_on: [TASK-003]
 - checkpoint: false
 - files: [agents/swarm-reviewer.yaml, agents/swarm-reviewer-system.md, commands/swarm-review.md, scripts/kimi-companion.py]
