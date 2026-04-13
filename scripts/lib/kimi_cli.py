@@ -40,6 +40,10 @@ AGENT_CONFIGS = {
         "agent_yaml": "refine-ui.yaml",
         "default_mode": "wait",
     },
+    "fix": {
+        "agent_yaml": "bulk-fixer.yaml",
+        "default_mode": "wait",
+    },
 }
 
 
