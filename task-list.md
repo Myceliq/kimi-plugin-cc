@@ -137,7 +137,7 @@
 - docs_reference: research-brief.md#verified-format-from-installed-kimi-cli-source, research-brief.md#agent-tool-parameters, research-brief.md#built-in-subagent-types, research-brief.md#kimi_clitools.multiagentcreatesubagent-does-not-exist
 
 ### TASK-009: Review-UI agent and review-ui command
-- status: pending
+- status: complete
 - depends_on: [TASK-003]
 - checkpoint: true
 - files: [agents/review-ui.yaml, agents/review-ui-system.md, commands/review-ui.md, scripts/kimi-companion.py]
